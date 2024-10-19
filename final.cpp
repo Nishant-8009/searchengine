@@ -269,7 +269,7 @@ int main() {
         char ch = _getch();
 
         if(ch == 13) {
-            cout <<"fuck me " <<input << endl;
+            cout << endl;
             engine.search(input);
             break;
         } 
