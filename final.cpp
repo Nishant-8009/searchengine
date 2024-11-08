@@ -2,6 +2,8 @@
 #include <memory>
 #include <windows.h>
 #include <conio.h>
+#include <cstdlib>
+
 using namespace std;
 
 unordered_set<string> stopWords = {"the", "is", "and", "a", "an", "in", "of", "on", "for", "with", "to"};
@@ -67,16 +69,81 @@ vector<string> tokenize(const string& content) {
     return tokens;
 }
 
+
+class TrieNode {
+public:
+    std::unordered_map<char, std::unique_ptr<TrieNode>> children;
+    bool is_end_of_word = false;
+};
+
+class Trie {
+private:
+    std::unique_ptr<TrieNode> root;
+
+    void findSuggestions(TrieNode* node, std::string prefix, std::vector<std::string>& suggestions) {
+        if (node->is_end_of_word) {
+            suggestions.push_back(prefix);
+        }
+
+        for (auto& child : node->children) {
+            findSuggestions(child.second.get(), prefix + child.first, suggestions);
+        }
+    }
+
+public:
+    Trie() : root(std::make_unique<TrieNode>()) {}
+
+    void insert(const std::string& word) {
+        TrieNode* current = root.get();
+        for (char c : word) {
+            if (!current->children.count(c)) {
+                current->children[c] = std::make_unique<TrieNode>();
+            }
+            current = current->children[c].get();
+        }
+        current->is_end_of_word = true;
+    }
+
+    std::vector<std::string> autocomplete(const std::string& prefix) {
+        TrieNode* current = root.get();
+        std::vector<std::string> suggestions;
+
+        for (char c : prefix) {
+            if (current->children.count(c)) {
+                current = current->children[c].get();
+            } else {
+                return suggestions;
+            }
+        }
+
+        findSuggestions(current, prefix, suggestions);
+        return suggestions;
+    }
+    // Search function to check if a word exists in the Trie
+    bool search(const std::string& word) const {
+        TrieNode* current = root.get();
+        for (char c : word) {
+            if (current->children.count(c) == 0) {
+                return false;
+            }
+            current = current->children.at(c).get();
+        }
+        return current->is_end_of_word;
+    }
+
+};
+
 class WebPage {
 public:
     string url;
     string content;
     unordered_map<string, int> wordFrequency;
 
-    WebPage(const string& u, const string& c) : url(u), content(c) {
+    WebPage(const string& u, const string& c, Trie& trie) : url(u), content(c) {
         auto tokens = tokenize(content);
         for (const string& token : tokens) {
             wordFrequency[token]++;
+            trie.insert(token);
         }
     }
 };
@@ -178,56 +245,45 @@ public:
     }
 };
 
-class TrieNode {
-public:
-    std::unordered_map<char, std::unique_ptr<TrieNode>> children;
-    bool is_end_of_word = false;
-};
+// Recursive function to find all word splits with memoization
+vector<string> wordBreakHelper(const string& s, const Trie& trie, unordered_map<string, vector<string>>& memo) {
+    if (memo.count(s)) return memo[s];
+    if (s.empty()) return {""};  // Base case: empty string has one valid split
 
-class Trie {
-private:
-    std::unique_ptr<TrieNode> root;
+    vector<string> results;
 
-    void findSuggestions(TrieNode* node, std::string prefix, std::vector<std::string>& suggestions) {
-        if (node->is_end_of_word) {
-            suggestions.push_back(prefix);
-        }
-
-        for (auto& child : node->children) {
-            findSuggestions(child.second.get(), prefix + child.first, suggestions);
-        }
-    }
-
-public:
-    Trie() : root(std::make_unique<TrieNode>()) {}
-
-    void insert(const std::string& word) {
-        TrieNode* current = root.get();
-        for (char c : word) {
-            if (!current->children.count(c)) {
-                current->children[c] = std::make_unique<TrieNode>();
-            }
-            current = current->children[c].get();
-        }
-        current->is_end_of_word = true;
-    }
-
-    std::vector<std::string> autocomplete(const std::string& prefix) {
-        TrieNode* current = root.get();
-        std::vector<std::string> suggestions;
-
-        for (char c : prefix) {
-            if (current->children.count(c)) {
-                current = current->children[c].get();
-            } else {
-                return suggestions;
+    // Try each prefix of the string as a possible word
+    for (int end = 1; end <= s.size(); ++end) {
+        string word = s.substr(0, end);
+        if (trie.search(word)) {
+            // Recur for the remaining substring after the current word
+            vector<string> subResults = wordBreakHelper(s.substr(end), trie, memo);
+            for (const string& subResult : subResults) {
+                // Concatenate the current word with the result of the rest of the string
+                results.push_back(word + (subResult.empty() ? "" : " " + subResult));
             }
         }
-
-        findSuggestions(current, prefix, suggestions);
-        return suggestions;
     }
-};
+
+    memo[s] = results;  // Memoize results for the current substring
+    return results;
+}
+
+vector<string> wordBreak(const string& s, const Trie& trie) {
+    unordered_map<string, vector<string>> memo;
+    return wordBreakHelper(s, trie, memo);
+}
+
+// Helper to split input string by space
+vector<string> splitInput(const string& input) {
+    stringstream ss(input);
+    string segment;
+    vector<string> words;
+    while (ss >> segment) {
+        words.push_back(segment);
+    }
+    return words;
+}
 
 void setCursorPosition(int x, int y) {
     COORD coord;
@@ -240,23 +296,17 @@ void setTextColor(WORD color) {
     SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), color);
 }
 int main() {
-    SearchEngine engine;
-    engine.addPage(WebPage("https://example.com", "This is an example page with a search engine."));
-    engine.addPage(WebPage("https://example2.com", "Another example page with algorithms and data."));
-    engine.addPage(WebPage("https://example3.com", "The news are spreading quickly. Search engines use algorithms."));
-    engine.addPage(WebPage("https://example4.com", "Exact match test: example search"));
-
+    #ifdef _WIN32
+        system("cls");  // For Windows
+    #else
+        system("clear");  // For Unix/Linux/Mac
+    #endif
     Trie trie;
-    trie.insert("apple");
-    trie.insert("application");
-    trie.insert("appreciate");
-    trie.insert("appliance");
-    trie.insert("banana");
-    trie.insert("band");
-    trie.insert("cat");
-    trie.insert("caterpillar");
-    trie.insert("search");
-    trie.insert("engine");
+    SearchEngine engine;
+    engine.addPage(WebPage("https://example.com", "This is an example page with a search engine.", trie));
+    engine.addPage(WebPage("https://example2.com", "Another example page with algorithms and data.", trie));
+    engine.addPage(WebPage("https://example3.com", "The news are spreading quickly. Search engines use algorithms.", trie));
+    engine.addPage(WebPage("https://example4.com", "Exact match test: example search", trie));
 
 
     std::string input;
@@ -269,8 +319,9 @@ int main() {
         char ch = _getch();
 
         if(ch == 13) {
-            cout << endl;
+            cout<<endl;
             engine.search(input);
+        
             break;
         } 
         else if(ch == '\b') {
@@ -293,9 +344,9 @@ int main() {
             input += ch;
         }
 
-        setCursorPosition(0, 2);
+        setCursorPosition(0, 0);
         std::cout << std::string(50, ' ');
-        setCursorPosition(0, 2);
+        setCursorPosition(0, 0);
 
         
         size_t pos = input.find_last_of(' ');
@@ -316,12 +367,6 @@ int main() {
         }
 
     }
-
-
-
-
-
-    
 
     return 0;
 }
