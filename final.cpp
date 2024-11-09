@@ -245,27 +245,23 @@ public:
     }
 };
 
-// Recursive function to find all word splits with memoization
 vector<string> wordBreakHelper(const string& s, const Trie& trie, unordered_map<string, vector<string>>& memo) {
     if (memo.count(s)) return memo[s];
-    if (s.empty()) return {""};  // Base case: empty string has one valid split
+    if (s.empty()) return {""};
 
     vector<string> results;
 
-    // Try each prefix of the string as a possible word
     for (int end = 1; end <= s.size(); ++end) {
         string word = s.substr(0, end);
         if (trie.search(word)) {
-            // Recur for the remaining substring after the current word
             vector<string> subResults = wordBreakHelper(s.substr(end), trie, memo);
             for (const string& subResult : subResults) {
-                // Concatenate the current word with the result of the rest of the string
                 results.push_back(word + (subResult.empty() ? "" : " " + subResult));
             }
         }
     }
 
-    memo[s] = results;  // Memoize results for the current substring
+    memo[s] = results;
     return results;
 }
 
@@ -274,7 +270,7 @@ vector<string> wordBreak(const string& s, const Trie& trie) {
     return wordBreakHelper(s, trie, memo);
 }
 
-// Helper to split input string by space
+
 vector<string> splitInput(const string& input) {
     stringstream ss(input);
     string segment;
@@ -283,6 +279,16 @@ vector<string> splitInput(const string& input) {
         words.push_back(segment);
     }
     return words;
+}
+
+void combineSplits(const vector<vector<string>>& allSplits, string& result, string current, int index) {
+    if (index == allSplits.size()) {
+        result += current + "\n";
+        return;
+    }
+    for (const string& part : allSplits[index]) {
+        combineSplits(allSplits, result, current.empty() ? part : current + " " + part, index + 1);
+    }
 }
 
 void setCursorPosition(int x, int y) {
@@ -320,7 +326,16 @@ int main() {
 
         if(ch == 13) {
             cout<<endl;
-            engine.search(input);
+            vector<string> parts = splitInput(input);
+            
+            vector<vector<string>> allSplits;
+            for (const string& part : parts) {
+                allSplits.push_back(wordBreak(part, trie));
+            }
+
+            string result;
+            combineSplits(allSplits, result, "", 0);
+            engine.search(result);
         
             break;
         } 
